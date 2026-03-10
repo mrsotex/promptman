@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PromptMan</title>
+  <style>
+    :root {
+      --bg: #0f0f13;
+      --sidebar: #141418;
+      --surface: #1a1a24;
+      --surface2: #20202c;
+      --surface3: #252533;
+      --border: #2a2a3a;
+      --accent: #7c6af7;
+      --accent-hover: #9183f9;
+      --accent-dim: #7c6af718;
+      --accent-dim2: #7c6af730;
+      --text: #e4e4ef;
+      --text-muted: #7a7a90;
+      --text-dim: #3e3e52;
+      --green: #4ade80;
+      --red: #f87171;
+      --red-dim: #f8717115;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    /* ══════════════════════════════════════
+       APP SHELL — 3-column layout
+    ══════════════════════════════════════ */
+    .app {
+      display: grid;
+      grid-template-columns: 256px 1fr 1fr;
+      grid-template-rows: 100vh;
+      height: 100vh;
+    }
+
+    /* ── Shared column styles ── */
+    .col {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      height: 100vh;
+    }
+
+    .col-body {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #444; }
+
+    /* ══════════════════════════════════════
+       LEFT — History Sidebar
+    ══════════════════════════════════════ */
+    .sidebar {
+      background: var(--sidebar);
+      border-right: 1px solid var(--border);
+    }
+
+    .sidebar-head {
+      padding: 20px 16px 14px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .app-logo {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin-bottom: 18px;
+    }
+
+    .logo-icon {
+      width: 30px; height: 30px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; flex-shrink: 0;
+    }
+
+    .logo-name {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    .sidebar-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .sidebar-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+    }
+
+    .btn-icon {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 12px;
+      padding: 3px 7px;
+      border-radius: 5px;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .btn-icon:hover { background: var(--border); color: var(--red); }
+
+    .history-list {
+      padding: 8px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .history-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 10px;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: background 0.12s;
+      position: relative;
+    }
+    .history-item:hover { background: var(--surface3); }
+    .history-item:hover .hi-del { opacity: 1; }
+
+    .hi-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      opacity: 0.5;
+      flex-shrink: 0;
+    }
+
+    .hi-info { flex: 1; min-width: 0; }
+    .hi-topic {
+      font-size: 13px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      color: var(--text);
+    }
+    .hi-date {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .hi-del {
+      background: none; border: none;
+      color: var(--text-muted);
+      font-size: 16px; line-height: 1;
+      cursor: pointer; padding: 2px 4px;
+      border-radius: 4px;
+      opacity: 0;
+      transition: all 0.12s;
+      flex-shrink: 0;
+    }
+    .hi-del:hover { color: var(--red); background: var(--red-dim); }
+
+    .history-empty {
+      padding: 20px 16px;
+      font-size: 12px;
+      color: var(--text-dim);
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    /* ══════════════════════════════════════
+       CENTER — Input Form
+    ══════════════════════════════════════ */
+    .center-col {
+      background: var(--bg);
+      border-right: 1px solid var(--border);
+    }
+
+    .center-head {
+      padding: 18px 24px 14px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .center-head h2 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    /* 가변 영역: step1 + step2 (body textarea가 남은 공간 채움) */
+    .center-main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding: 20px 24px 0;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    .field-group { display: flex; flex-direction: column; gap: 7px; }
+
+    /* step2 field: flex:1로 남은 공간 전부 차지 */
+    .field-group.body-group {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      padding-bottom: 16px;
+    }
+
+    .field-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .field-label .step-badge {
+      width: 16px; height: 16px;
+      background: var(--accent-dim2);
+      border: 1px solid var(--accent);
+      border-radius: 50%;
+      font-size: 9px; font-weight: 700;
+      color: var(--accent);
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    input[type="text"], textarea {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 14px;
+      padding: 10px 13px;
+      outline: none;
+      transition: border-color 0.15s;
+      resize: none;
+    }
+    input[type="text"]:focus, textarea:focus { border-color: var(--accent); }
+    input[type="text"]::placeholder, textarea::placeholder { color: var(--text-dim); }
+
+    /* body textarea: flex:1로 부모(body-group) 공간 전부 채움 */
+    textarea.body-input {
+      flex: 1;
+      min-height: 0;
+      line-height: 1.6;
+    }
+
+    /* ── Footer: 멘트 + 생성 버튼 (하단 고정) ── */
+    .center-footer {
+      flex-shrink: 0;
+      border-top: 1px solid var(--border);
+      background: var(--bg);
+      padding: 14px 24px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .footer-phrases-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .footer-phrases-label .step-badge {
+      width: 16px; height: 16px;
+      background: var(--accent-dim2);
+      border: 1px solid var(--accent);
+      border-radius: 50%;
+      font-size: 9px; font-weight: 700;
+      color: var(--accent);
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    /* Phrases */
+    .phrases-wrap { display: flex; flex-direction: column; gap: 10px; }
+
+    .phrases-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      min-height: 28px;
+    }
+
+    .phrase-chip {
+      display: flex; align-items: center; gap: 5px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 4px 9px 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.12s;
+      user-select: none;
+    }
+    .phrase-chip:hover { border-color: var(--accent); background: var(--accent-dim); }
+    .phrase-chip.selected { border-color: var(--accent); background: var(--accent-dim2); color: #bdb7f5; }
+    .chip-check { font-size: 9px; color: var(--accent); opacity: 0; transition: opacity 0.12s; }
+    .phrase-chip.selected .chip-check { opacity: 1; }
+    .chip-del {
+      background: none; border: none; color: var(--text-dim);
+      cursor: pointer; font-size: 14px; line-height: 1;
+      padding: 0; margin-left: 1px;
+      display: flex; align-items: center;
+      transition: color 0.12s;
+    }
+    .chip-del:hover { color: var(--red); }
+
+    .empty-hint { font-size: 12px; color: var(--text-dim); }
+
+    .add-phrase-row { display: flex; gap: 7px; }
+    .add-phrase-row input { flex: 1; }
+
+    hr { border: none; border-top: 1px solid var(--border); }
+
+    /* Buttons */
+    .btn {
+      background: var(--accent); color: #fff;
+      border: none; border-radius: 7px;
+      font-size: 13px; font-weight: 600;
+      padding: 0 16px; height: 36px;
+      cursor: pointer; transition: background 0.15s;
+      white-space: nowrap;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .btn.secondary {
+      background: var(--surface);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+    .btn.secondary:hover { background: var(--border); color: var(--text); }
+    .btn.sm { height: 30px; font-size: 12px; padding: 0 12px; }
+
+    .generate-btn {
+      background: var(--accent); color: #fff;
+      border: none; border-radius: 9px;
+      font-size: 14px; font-weight: 700;
+      height: 44px; width: 100%;
+      cursor: pointer; transition: background 0.15s;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      letter-spacing: -0.2px;
+    }
+    .generate-btn:hover { background: var(--accent-hover); }
+
+    .shortcut-hint {
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: -4px;
+    }
+
+    /* ══════════════════════════════════════
+       RIGHT — Output Panel
+    ══════════════════════════════════════ */
+    .output-col { background: var(--sidebar); }
+
+    .output-head {
+      padding: 18px 20px 14px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .output-head h2 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .output-actions {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .copy-toast {
+      font-size: 11px;
+      color: var(--green);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .copy-toast.show { opacity: 1; }
+
+    .output-body {
+      padding: 16px 20px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    textarea.output-area {
+      flex: 1;
+      width: 100%;
+      min-height: 0;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: #c0bcf0;
+      font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+      font-size: 12.5px;
+      line-height: 1.7;
+      padding: 14px;
+      outline: none;
+      resize: none;
+      transition: border-color 0.15s;
+    }
+    textarea.output-area:focus { border-color: var(--accent); }
+
+    .output-empty {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: var(--text-dim);
+    }
+    .output-empty .empty-icon { font-size: 32px; opacity: 0.4; }
+    .output-empty p { font-size: 13px; text-align: center; line-height: 1.6; }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.65);
+      backdrop-filter: blur(6px);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.18s;
+      padding: 24px;
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      width: 100%; max-width: 640px;
+      max-height: 78vh;
+      display: flex; flex-direction: column;
+      transform: translateY(10px) scale(0.99);
+      transition: transform 0.18s;
+    }
+    .modal-overlay.open .modal { transform: translateY(0) scale(1); }
+
+    .modal-head {
+      padding: 18px 20px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: flex-start; gap: 12px;
+    }
+    .modal-head-info { flex: 1; min-width: 0; }
+    .modal-topic { font-size: 15px; font-weight: 700; word-break: break-word; }
+    .modal-meta { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+    .modal-phrases-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+    .modal-tag {
+      font-size: 11px; background: var(--accent-dim);
+      border: 1px solid var(--accent);
+      color: #bdb7f5; border-radius: 10px; padding: 2px 9px;
+    }
+    .modal-close {
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text-muted); width: 28px; height: 28px;
+      border-radius: 50%; cursor: pointer; font-size: 16px;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.12s; flex-shrink: 0; line-height: 1;
+    }
+    .modal-close:hover { background: var(--border); color: var(--text); }
+
+    .modal-body { padding: 14px 20px; overflow-y: auto; flex: 1; }
+    .modal-prompt {
+      width: 100%;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 7px; color: #c0bcf0;
+      font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+      font-size: 12px; line-height: 1.7;
+      padding: 12px; min-height: 180px;
+      resize: vertical; outline: none;
+    }
+    .modal-prompt:focus { border-color: var(--accent); }
+
+    .modal-footer {
+      display: flex; align-items: center; gap: 8px;
+      padding: 12px 20px;
+      border-top: 1px solid var(--border);
+    }
+    .modal-copy-toast {
+      font-size: 11px; color: var(--green);
+      margin-right: auto; opacity: 0; transition: opacity 0.2s;
+    }
+    .modal-copy-toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ══ LEFT: History Sidebar ══ -->
+  <aside class="col sidebar">
+    <div class="sidebar-head">
+      <div class="app-logo">
+        <div class="logo-icon">✦</div>
+        <span class="logo-name">PromptMan</span>
+      </div>
+      <div class="sidebar-title-row">
+        <span class="sidebar-title">생성 이력</span>
+        <button class="btn-icon" onclick="clearAllHistory()">전체 삭제</button>
+      </div>
+    </div>
+    <div class="col-body">
+      <div class="history-list" id="historyList">
+        <div class="history-empty" id="historyEmpty">
+          프롬프트를 생성하면<br />이곳에 이력이 쌓입니다.
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ══ CENTER: Input Form ══ -->
+  <main class="col center-col">
+    <div class="center-head">
+      <h2>새 프롬프트 작성</h2>
+    </div>
+
+    <!-- 가변 영역: Step 1 + Step 2 -->
+    <div class="center-main">
+
+      <!-- Step 1 -->
+      <div class="field-group">
+        <div class="field-label">
+          <span class="step-badge">1</span>
+          주제 / 메뉴 이름
+        </div>
+        <input type="text" id="topic"
+          placeholder="예: 로그인 페이지, 회원가입 API, 대시보드 차트..." />
+      </div>
+
+      <!-- Step 2: flex:1 로 남은 공간 채움 -->
+      <div class="field-group body-group">
+        <div class="field-label">
+          <span class="step-badge">2</span>
+          요청 내용
+        </div>
+        <textarea id="body" class="body-input"
+          placeholder="어떤 기능을 만들고 싶은지, 어떻게 동작해야 하는지 작성하세요.&#10;예: 이메일과 비밀번호로 로그인하고 JWT 토큰을 반환하는 API를 만들어줘."></textarea>
+      </div>
+
+    </div>
+
+    <!-- 하단 고정 Footer: Step 3 + 생성 버튼 -->
+    <div class="center-footer">
+
+      <!-- Step 3 -->
+      <div>
+        <div class="footer-phrases-label" style="margin-bottom:8px;">
+          <span class="step-badge">3</span>
+          자주 쓰는 멘트
+          <span style="font-weight:400;color:var(--text-dim);font-size:11px;text-transform:none;letter-spacing:0;">선택 시 프롬프트에 포함</span>
+        </div>
+        <div class="phrases-wrap">
+          <div class="phrases-list" id="phrasesList"></div>
+          <hr style="margin:10px 0;" />
+          <div class="add-phrase-row">
+            <input type="text" id="newPhrase"
+              placeholder="예: TypeScript로 작성해줘, 주석 달아줘..." />
+            <button class="btn secondary sm" onclick="addPhrase()">+ 추가</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Generate -->
+      <button class="generate-btn" onclick="generatePrompt()">
+        ✦ 프롬프트 생성
+      </button>
+      <p class="shortcut-hint">⌘ + Enter</p>
+
+    </div>
+  </main>
+
+  <!-- ══ RIGHT: Output Panel ══ -->
+  <section class="col output-col">
+    <div class="output-head">
+      <h2>생성된 프롬프트</h2>
+      <div class="output-actions">
+        <span class="copy-toast" id="copyToast">복사 완료!</span>
+        <button class="btn secondary sm" onclick="generatePrompt()" id="regenBtn" style="display:none;">↺ 재생성</button>
+        <button class="btn sm" onclick="copyOutput()" id="copyBtn" style="display:none;">📋 복사</button>
+      </div>
+    </div>
+    <div class="output-body" id="outputBody">
+      <!-- Empty state -->
+      <div class="output-empty" id="outputEmpty">
+        <div class="empty-icon">✦</div>
+        <p>프롬프트를 작성하고<br />생성 버튼을 눌러주세요.</p>
+      </div>
+      <!-- Output textarea (hidden until generated) -->
+      <textarea class="output-area" id="outputArea" spellcheck="false"
+        style="display:none;"></textarea>
+    </div>
+  </section>
+
+</div>
+
+<!-- ── Modal ── -->
+<div class="modal-overlay" id="modalOverlay" onclick="handleOverlayClick(event)">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-head-info">
+        <div class="modal-topic" id="modalTopic"></div>
+        <div class="modal-meta" id="modalMeta"></div>
+        <div class="modal-phrases-row" id="modalPhrases"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <textarea class="modal-prompt" id="modalPrompt" spellcheck="false"></textarea>
+    </div>
+    <div class="modal-footer">
+      <span class="modal-copy-toast" id="modalCopyToast">복사 완료!</span>
+      <button class="btn secondary sm" onclick="closeModal()">닫기</button>
+      <button class="btn sm" onclick="copyModalPrompt()">📋 복사하기</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const KEY_PHRASES = 'promptman_phrases';
+  const KEY_HISTORY = 'promptman_history';
+
+  let phrases = [];
+  let history = [];
+
+  // ── Init ──────────────────────────────────────────────────
+  function init() {
+    try { phrases = JSON.parse(localStorage.getItem(KEY_PHRASES) || '[]'); } catch(e) { phrases = []; }
+    try { history = JSON.parse(localStorage.getItem(KEY_HISTORY) || '[]'); } catch(e) { history = []; }
+    renderPhrases();
+    renderHistory();
+  }
+
+  // ── Phrases ───────────────────────────────────────────────
+  function savePhrases() { localStorage.setItem(KEY_PHRASES, JSON.stringify(phrases)); }
+
+  function renderPhrases() {
+    const list = document.getElementById('phrasesList');
+    list.innerHTML = '';
+    if (phrases.length === 0) {
+      list.innerHTML = '<span class="empty-hint">저장된 멘트가 없습니다.</span>';
+      return;
+    }
+    phrases.forEach(p => {
+      const chip = document.createElement('div');
+      chip.className = 'phrase-chip' + (p.selected ? ' selected' : '');
+
+      const check = document.createElement('span');
+      check.className = 'chip-check';
+      check.textContent = '✓';
+
+      const label = document.createTextNode(p.text);
+
+      const del = document.createElement('button');
+      del.className = 'chip-del';
+      del.innerHTML = '×';
+      del.onclick = e => { e.stopPropagation(); deletePhrase(p.id); };
+
+      chip.appendChild(check);
+      chip.appendChild(label);
+      chip.appendChild(del);
+      chip.onclick = () => togglePhrase(p.id);
+      list.appendChild(chip);
+    });
+  }
+
+  function addPhrase() {
+    const input = document.getElementById('newPhrase');
+    const text = input.value.trim();
+    if (!text) return;
+    phrases.push({ id: Date.now().toString(), text, selected: false });
+    savePhrases();
+    renderPhrases();
+    input.value = '';
+    input.focus();
+  }
+
+  function deletePhrase(id) {
+    phrases = phrases.filter(p => p.id !== id);
+    savePhrases();
+    renderPhrases();
+  }
+
+  function togglePhrase(id) {
+    const p = phrases.find(p => p.id === id);
+    if (p) p.selected = !p.selected;
+    savePhrases();
+    renderPhrases();
+  }
+
+  // ── Generate ──────────────────────────────────────────────
+  function generatePrompt() {
+    const topic = document.getElementById('topic').value.trim();
+    const body  = document.getElementById('body').value.trim();
+    const selectedPhrases = phrases.filter(p => p.selected).map(p => p.text);
+
+    if (!topic && !body) {
+      alert('주제 또는 요청 내용을 입력해주세요.');
+      return;
+    }
+
+    let prompt = '';
+    if (topic) prompt += `# ${topic}\n\n`;
+    if (body)  prompt += `${body}\n`;
+    if (selectedPhrases.length > 0) {
+      prompt += `\n## 추가 요구사항\n`;
+      selectedPhrases.forEach(p => { prompt += `- ${p}\n`; });
+    }
+    prompt = prompt.trim();
+
+    // Show output
+    const area = document.getElementById('outputArea');
+    const empty = document.getElementById('outputEmpty');
+    area.value = prompt;
+    area.style.display = 'flex';
+    empty.style.display = 'none';
+    document.getElementById('regenBtn').style.display = 'inline-flex';
+    document.getElementById('copyBtn').style.display = 'inline-flex';
+
+    // Save history
+    saveHistory({ topic: topic || '(제목 없음)', body, selectedPhrases, prompt });
+
+    // Auto-copy
+    copyToClipboard(prompt, false);
+
+    // Reset input fields (멘트 선택 상태는 유지)
+    document.getElementById('topic').value = '';
+    document.getElementById('body').value = '';
+  }
+
+  // ── History ───────────────────────────────────────────────
+  function saveHistory({ topic, body, selectedPhrases, prompt }) {
+    history.unshift({ id: Date.now().toString(), topic, body, selectedPhrases, prompt, createdAt: new Date().toISOString() });
+    if (history.length > 100) history = history.slice(0, 100);
+    localStorage.setItem(KEY_HISTORY, JSON.stringify(history));
+    renderHistory();
+  }
+
+  function deleteHistory(id) {
+    history = history.filter(h => h.id !== id);
+    localStorage.setItem(KEY_HISTORY, JSON.stringify(history));
+    renderHistory();
+  }
+
+  function clearAllHistory() {
+    if (history.length === 0) return;
+    if (!confirm('생성 이력을 모두 삭제할까요?')) return;
+    history = [];
+    localStorage.setItem(KEY_HISTORY, JSON.stringify(history));
+    renderHistory();
+  }
+
+  function renderHistory() {
+    const list = document.getElementById('historyList');
+    list.innerHTML = '';
+
+    if (history.length === 0) {
+      list.innerHTML = '<div class="history-empty">프롬프트를 생성하면<br />이곳에 이력이 쌓입니다.</div>';
+      return;
+    }
+
+    history.forEach(entry => {
+      const item = document.createElement('div');
+      item.className = 'history-item';
+
+      const dot = document.createElement('div');
+      dot.className = 'hi-dot';
+
+      const info = document.createElement('div');
+      info.className = 'hi-info';
+      info.innerHTML = `<div class="hi-topic">${escHtml(entry.topic)}</div><div class="hi-date">${formatDate(entry.createdAt)}</div>`;
+
+      const del = document.createElement('button');
+      del.className = 'hi-del';
+      del.innerHTML = '×';
+      del.onclick = e => { e.stopPropagation(); deleteHistory(entry.id); };
+
+      item.appendChild(dot);
+      item.appendChild(info);
+      item.appendChild(del);
+      item.onclick = () => openModal(entry);
+      list.appendChild(item);
+    });
+  }
+
+  function formatDate(iso) {
+    const d = new Date(iso);
+    const pad = n => String(n).padStart(2,'0');
+    return `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function escHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── Modal ─────────────────────────────────────────────────
+  function openModal(entry) {
+    document.getElementById('modalTopic').textContent = entry.topic;
+    document.getElementById('modalMeta').textContent = formatDate(entry.createdAt) + ' 생성';
+    const pr = document.getElementById('modalPhrases');
+    pr.innerHTML = '';
+    (entry.selectedPhrases || []).forEach(p => {
+      const tag = document.createElement('span');
+      tag.className = 'modal-tag';
+      tag.textContent = p;
+      pr.appendChild(tag);
+    });
+    document.getElementById('modalPrompt').value = entry.prompt;
+    document.getElementById('modalCopyToast').classList.remove('show');
+    document.getElementById('modalOverlay').classList.add('open');
+  }
+
+  function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
+  function handleOverlayClick(e) { if (e.target.id === 'modalOverlay') closeModal(); }
+
+  function copyModalPrompt() {
+    copyToClipboard(document.getElementById('modalPrompt').value, false);
+    const t = document.getElementById('modalCopyToast');
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2000);
+  }
+
+  // ── Copy ──────────────────────────────────────────────────
+  function copyOutput() {
+    copyToClipboard(document.getElementById('outputArea').value, true);
+  }
+
+  function copyToClipboard(text, showToast) {
+    const done = () => { if (showToast) showCopyToast('copyToast'); };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, showToast));
+    } else {
+      fallbackCopy(text, showToast);
+    }
+  }
+
+  function fallbackCopy(text, showToast) {
+    const ta = Object.assign(document.createElement('textarea'), { value: text });
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    if (showToast) showCopyToast('copyToast');
+  }
+
+  function showCopyToast(id) {
+    const t = document.getElementById(id);
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2000);
+  }
+
+  // ── Keyboard ──────────────────────────────────────────────
+  document.addEventListener('keydown', e => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); generatePrompt(); }
+    if (e.key === 'Escape') closeModal();
+    if (e.target.id === 'newPhrase' && e.key === 'Enter') addPhrase();
+  });
+
+  init();
+</script>
+</body>
+</html>
