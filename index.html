@@ -884,10 +884,8 @@
     }
 
     // 주제 미입력 시 '요청사항'으로 자동 처리
-    if (!topic) {
-      topic = '요청사항';
-      document.getElementById('topic').value = topic;
-    }
+    const autoFilled = !topic;
+    if (autoFilled) topic = '요청사항';
 
     let prompt = '';
     if (topic) prompt += `# ${topic}\n\n`;
@@ -914,7 +912,7 @@
     copyToClipboard(prompt, false);
 
     // Reset input fields (멘트 선택 상태는 유지)
-    document.getElementById('topic').value = '';
+    document.getElementById('topic').value = autoFilled ? '요청사항' : '';
     document.getElementById('body').value = '';
   }
 
