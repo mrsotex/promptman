@@ -883,6 +883,12 @@
       return;
     }
 
+    // 주제 미입력 시 '요청사항'으로 자동 처리
+    if (!topic) {
+      topic = '요청사항';
+      document.getElementById('topic').value = topic;
+    }
+
     let prompt = '';
     if (topic) prompt += `# ${topic}\n\n`;
     if (body)  prompt += `${body}\n`;
@@ -902,7 +908,7 @@
     document.getElementById('copyBtn').style.display = 'inline-flex';
 
     // Save history
-    saveHistory({ topic: topic || '(제목 없음)', body, selectedPhrases, prompt });
+    saveHistory({ topic, body, selectedPhrases, prompt });
 
     // Auto-copy
     copyToClipboard(prompt, false);
