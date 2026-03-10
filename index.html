@@ -874,7 +874,7 @@
 
   // ── Generate ──────────────────────────────────────────────
   function generatePrompt() {
-    const topic = document.getElementById('topic').value.trim();
+    let topic = document.getElementById('topic').value.trim();
     const body  = document.getElementById('body').value.trim();
     const selectedPhrases = phrases.filter(p => p.selected).map(p => p.text);
 
