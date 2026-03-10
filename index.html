@@ -186,6 +186,17 @@
       line-height: 1.6;
     }
 
+    /* 날짜 그룹 헤더 */
+    .history-date-group {
+      padding: 14px 10px 4px;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+    .history-date-group:first-child { padding-top: 10px; }
+
     /* ══════════════════════════════════════
        CENTER — Input Form
     ══════════════════════════════════════ */
@@ -318,10 +329,10 @@
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 16px;
-      padding: 4px 9px 4px 10px;
+      padding: 4px 9px 4px 8px;
       font-size: 12px;
       cursor: pointer;
-      transition: all 0.12s;
+      transition: border-color 0.12s, background 0.12s, opacity 0.12s;
       user-select: none;
     }
     .phrase-chip:hover { border-color: var(--accent); background: var(--accent-dim); }
@@ -336,6 +347,57 @@
       transition: color 0.12s;
     }
     .chip-del:hover { color: var(--red); }
+
+    /* Drag handle */
+    .chip-drag {
+      display: flex; flex-direction: column; gap: 2.5px;
+      padding: 2px 3px 2px 0;
+      cursor: grab; opacity: 0.25;
+      transition: opacity 0.12s;
+      flex-shrink: 0;
+    }
+    .chip-drag:active { cursor: grabbing; }
+    .chip-drag span {
+      display: flex; gap: 2.5px;
+    }
+    .chip-drag span::before,
+    .chip-drag span::after {
+      content: ''; width: 2.5px; height: 2.5px;
+      border-radius: 50%; background: currentColor;
+      display: block;
+    }
+    .phrase-chip:hover .chip-drag { opacity: 0.6; }
+
+    /* Drag states */
+    .phrase-chip.dragging { opacity: 0.35; }
+    .phrase-chip.drag-over-before { box-shadow: -3px 0 0 0 var(--accent); }
+    .phrase-chip.drag-over-after  { box-shadow:  3px 0 0 0 var(--accent); }
+
+    /* ── Custom Confirm Dialog ── */
+    .confirm-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 2000;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.15s;
+    }
+    .confirm-overlay.open { opacity: 1; pointer-events: all; }
+    .confirm-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 22px;
+      width: 300px;
+      display: flex; flex-direction: column; gap: 14px;
+      transform: scale(0.96);
+      transition: transform 0.15s;
+    }
+    .confirm-overlay.open .confirm-box { transform: scale(1); }
+    .confirm-msg { font-size: 13px; line-height: 1.6; color: var(--text); }
+    .confirm-msg strong { color: #bdb7f5; }
+    .confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
     .empty-hint { font-size: 12px; color: var(--text-dim); }
 
@@ -656,12 +718,25 @@
   </div>
 </div>
 
+<!-- ── Confirm Dialog ── -->
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-box">
+    <p class="confirm-msg" id="confirmMsg"></p>
+    <div class="confirm-actions">
+      <button class="btn secondary sm" onclick="confirmCancel()">취소</button>
+      <button class="btn sm" style="background:#e05555;" onclick="confirmOk()">삭제</button>
+    </div>
+  </div>
+</div>
+
 <script>
   const KEY_PHRASES = 'promptman_phrases';
   const KEY_HISTORY = 'promptman_history';
 
   let phrases = [];
   let history = [];
+  let confirmCallback = null;
+  let dragId = null;
 
   // ── Init ──────────────────────────────────────────────────
   function init() {
@@ -684,6 +759,14 @@
     phrases.forEach(p => {
       const chip = document.createElement('div');
       chip.className = 'phrase-chip' + (p.selected ? ' selected' : '');
+      chip.dataset.id = p.id;
+      chip.draggable = true;
+
+      // Drag handle (dots)
+      const handle = document.createElement('span');
+      handle.className = 'chip-drag';
+      handle.innerHTML = '<span></span><span></span>';
+      handle.addEventListener('mousedown', e => e.stopPropagation());
 
       const check = document.createElement('span');
       check.className = 'chip-check';
@@ -694,12 +777,55 @@
       const del = document.createElement('button');
       del.className = 'chip-del';
       del.innerHTML = '×';
-      del.onclick = e => { e.stopPropagation(); deletePhrase(p.id); };
+      del.onclick = e => { e.stopPropagation(); deletePhrase(p.id, p.text); };
 
+      chip.appendChild(handle);
       chip.appendChild(check);
       chip.appendChild(label);
       chip.appendChild(del);
       chip.onclick = () => togglePhrase(p.id);
+
+      // ── Drag & Drop ──
+      chip.addEventListener('dragstart', e => {
+        dragId = p.id;
+        e.dataTransfer.effectAllowed = 'move';
+        setTimeout(() => chip.classList.add('dragging'), 0);
+      });
+      chip.addEventListener('dragend', () => {
+        chip.classList.remove('dragging');
+        dragId = null;
+        list.querySelectorAll('.phrase-chip').forEach(c => {
+          c.classList.remove('drag-over-before', 'drag-over-after');
+        });
+      });
+      chip.addEventListener('dragover', e => {
+        e.preventDefault();
+        if (!dragId || dragId === p.id) return;
+        e.dataTransfer.dropEffect = 'move';
+        list.querySelectorAll('.phrase-chip').forEach(c => {
+          c.classList.remove('drag-over-before', 'drag-over-after');
+        });
+        const rect = chip.getBoundingClientRect();
+        const mid  = rect.left + rect.width / 2;
+        chip.classList.add(e.clientX < mid ? 'drag-over-before' : 'drag-over-after');
+      });
+      chip.addEventListener('dragleave', () => {
+        chip.classList.remove('drag-over-before', 'drag-over-after');
+      });
+      chip.addEventListener('drop', e => {
+        e.preventDefault();
+        if (!dragId || dragId === p.id) return;
+        const rect    = chip.getBoundingClientRect();
+        const before  = e.clientX < rect.left + rect.width / 2;
+        const fromIdx = phrases.findIndex(ph => ph.id === dragId);
+        let   toIdx   = phrases.findIndex(ph => ph.id === p.id);
+        const [moved] = phrases.splice(fromIdx, 1);
+        toIdx = phrases.findIndex(ph => ph.id === p.id); // recalc after splice
+        phrases.splice(before ? toIdx : toIdx + 1, 0, moved);
+        savePhrases();
+        renderPhrases();
+      });
+
       list.appendChild(chip);
     });
   }
@@ -715,10 +841,12 @@
     input.focus();
   }
 
-  function deletePhrase(id) {
-    phrases = phrases.filter(p => p.id !== id);
-    savePhrases();
-    renderPhrases();
+  function deletePhrase(id, text) {
+    showConfirm(`<strong>"${escHtml(text)}"</strong> 멘트를 삭제할까요?`, () => {
+      phrases = phrases.filter(p => p.id !== id);
+      savePhrases();
+      renderPhrases();
+    });
   }
 
   function togglePhrase(id) {
@@ -726,6 +854,22 @@
     if (p) p.selected = !p.selected;
     savePhrases();
     renderPhrases();
+  }
+
+  // ── Confirm Dialog ─────────────────────────────────────────
+  function showConfirm(htmlMsg, cb) {
+    document.getElementById('confirmMsg').innerHTML = htmlMsg;
+    confirmCallback = cb;
+    document.getElementById('confirmOverlay').classList.add('open');
+  }
+  function confirmOk() {
+    document.getElementById('confirmOverlay').classList.remove('open');
+    if (confirmCallback) confirmCallback();
+    confirmCallback = null;
+  }
+  function confirmCancel() {
+    document.getElementById('confirmOverlay').classList.remove('open');
+    confirmCallback = null;
   }
 
   // ── Generate ──────────────────────────────────────────────
@@ -799,28 +943,70 @@
       return;
     }
 
+    // 날짜별 그룹핑
+    const groups = {};
     history.forEach(entry => {
-      const item = document.createElement('div');
-      item.className = 'history-item';
-
-      const dot = document.createElement('div');
-      dot.className = 'hi-dot';
-
-      const info = document.createElement('div');
-      info.className = 'hi-info';
-      info.innerHTML = `<div class="hi-topic">${escHtml(entry.topic)}</div><div class="hi-date">${formatDate(entry.createdAt)}</div>`;
-
-      const del = document.createElement('button');
-      del.className = 'hi-del';
-      del.innerHTML = '×';
-      del.onclick = e => { e.stopPropagation(); deleteHistory(entry.id); };
-
-      item.appendChild(dot);
-      item.appendChild(info);
-      item.appendChild(del);
-      item.onclick = () => openModal(entry);
-      list.appendChild(item);
+      const key = dateKey(entry.createdAt);
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(entry);
     });
+
+    Object.keys(groups).forEach(key => {
+      // 날짜 그룹 헤더
+      const header = document.createElement('div');
+      header.className = 'history-date-group';
+      header.textContent = formatGroupLabel(key);
+      list.appendChild(header);
+
+      groups[key].forEach(entry => {
+        const item = document.createElement('div');
+        item.className = 'history-item';
+
+        const dot = document.createElement('div');
+        dot.className = 'hi-dot';
+
+        const info = document.createElement('div');
+        info.className = 'hi-info';
+        info.innerHTML = `<div class="hi-topic">${escHtml(entry.topic)}</div><div class="hi-date">${formatTime(entry.createdAt)}</div>`;
+
+        const del = document.createElement('button');
+        del.className = 'hi-del';
+        del.innerHTML = '×';
+        del.onclick = e => { e.stopPropagation(); deleteHistory(entry.id); };
+
+        item.appendChild(dot);
+        item.appendChild(info);
+        item.appendChild(del);
+        item.onclick = () => openModal(entry);
+        list.appendChild(item);
+      });
+    });
+  }
+
+  function dateKey(iso) {
+    const d = new Date(iso);
+    const pad = n => String(n).padStart(2,'0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  }
+
+  function formatGroupLabel(key) {
+    const today     = dateKey(new Date().toISOString());
+    const yesterday = dateKey(new Date(Date.now() - 86400000).toISOString());
+    if (key === today)     return '오늘';
+    if (key === yesterday) return '어제';
+    // 이번 주(7일 이내)
+    const diffDays = Math.floor((Date.now() - new Date(key).getTime()) / 86400000);
+    if (diffDays < 7) {
+      const days = ['일', '월', '화', '수', '목', '금', '토'];
+      return `${days[new Date(key).getDay()]}요일`;
+    }
+    return key.replace(/-/g, '.');
+  }
+
+  function formatTime(iso) {
+    const d = new Date(iso);
+    const pad = n => String(n).padStart(2,'0');
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
   function formatDate(iso) {
@@ -891,10 +1077,19 @@
   }
 
   // ── Keyboard ──────────────────────────────────────────────
+  // isComposing: 한글 등 IME 조합 중에는 무시 (마지막 글자 잔류 버그 방지)
   document.addEventListener('keydown', e => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); generatePrompt(); }
-    if (e.key === 'Escape') closeModal();
-    if (e.target.id === 'newPhrase' && e.key === 'Enter') addPhrase();
+    if (e.key === 'Escape') { closeModal(); confirmCancel(); }
+    if (e.target.id === 'topic' && e.key === 'Enter' && !e.isComposing) {
+      e.preventDefault();
+      document.getElementById('body').focus();
+    }
+    if (e.target.id === 'newPhrase' && e.key === 'Enter' && !e.isComposing) addPhrase();
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      // setTimeout(0): IME 조합 완료(compositionend)를 먼저 처리한 뒤 실행
+      setTimeout(() => generatePrompt(), 0);
+    }
   });
 
   init();
