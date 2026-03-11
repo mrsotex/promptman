@@ -461,6 +461,22 @@
     .btn.secondary:hover { background: var(--border); color: var(--text); }
     .btn.sm { height: 30px; font-size: 12px; padding: 0 12px; }
 
+    .model-select-row {
+      display: flex;
+      gap: 16px;
+    }
+    .model-radio {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+    .model-radio input[type="radio"] { accent-color: var(--accent); cursor: pointer; }
+    .model-radio:has(input:checked) { color: var(--accent); }
+
     .generate-btn {
       background: var(--accent); color: #fff;
       border: none; border-radius: 9px;
@@ -698,6 +714,18 @@
         </div>
       </div>
 
+      <!-- Model select -->
+      <div class="model-select-row">
+        <label class="model-radio">
+          <input type="radio" name="model" value="claude-sonnet-4-6" checked />
+          <span>Sonnet</span>
+        </label>
+        <label class="model-radio">
+          <input type="radio" name="model" value="claude-haiku-4-5-20251001" />
+          <span>Haiku</span>
+        </label>
+      </div>
+
       <!-- Generate -->
       <button class="generate-btn" id="generateBtn" onclick="generatePrompt()">
         ✦ 프롬프트 생성
@@ -766,7 +794,9 @@
 <script>
   const KEY_PHRASES = 'promptman_phrases';
   const KEY_HISTORY = 'promptman_history';
-  const CLAUDE_MODEL   = 'claude-sonnet-4-6';
+  function getModel() {
+    return document.querySelector('input[name="model"]:checked')?.value || 'claude-sonnet-4-6';
+  }
   const KEY_API = 'promptman_api_key';
 
   function getApiKey() {
@@ -962,17 +992,9 @@
           'anthropic-dangerous-direct-browser-access': 'true',
         },
         body: JSON.stringify({
-          model: CLAUDE_MODEL,
-          max_tokens: 2048,
-          system: `당신은 AI 프롬프트 작성 전문가입니다.
-사용자가 제공한 주제·요청 내용·추가 요구사항을 바탕으로, AI 어시스턴트에게 전달할 명확하고 구조화된 프롬프트를 한국어로 작성하세요.
-
-규칙:
-- 마크다운 형식 사용 (# 주제로 시작, 필요 시 ## 섹션 추가)
-- 첫 줄은 반드시 "# {주제}" 형식
-- 요청 내용을 구체적이고 실행 가능하게 다듬되 의미 변경 금지
-- 추가 요구사항이 있으면 "## 추가 요구사항" 섹션으로 포함
-- 프롬프트 본문만 출력 (설명·인사 등 일절 금지)`,
+          model: getModel(),
+          max_tokens: 1024,
+          system: `사용자의 요청을 AI에게 전달할 간결한 프롬프트로 다듬어라. 마크다운 사용, 군더더기 없이 핵심만. 추가 요구사항이 있으면 끝에 붙여라. 설명·인사 없이 프롬프트만 출력.`,
           messages: [{ role: 'user', content: userMessage }],
         }),
       });
