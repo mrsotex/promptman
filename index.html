@@ -790,6 +790,7 @@
   let dragId = null;
   let recognition = null;
   let isRecording = false;
+  let silenceTimer = null;
 
   // ── Init ──────────────────────────────────────────────────
   function init() {
@@ -1158,6 +1159,7 @@
       isRecording = true;
       document.getElementById('voiceBtn').classList.add('recording');
       document.getElementById('voiceStatus').textContent = '듣는 중...';
+      resetSilenceTimer();
     };
 
     recognition.onresult = function(event) {
@@ -1176,6 +1178,7 @@
         bodyEl.value = cur + (cur && !cur.endsWith('\n') ? ' ' : '') + finalTranscript;
       }
       document.getElementById('voiceStatus').textContent = interimTranscript || '듣는 중...';
+      resetSilenceTimer();
     };
 
     recognition.onerror = function(event) {
@@ -1192,8 +1195,15 @@
     recognition.start();
   }
 
+  function resetSilenceTimer() {
+    clearTimeout(silenceTimer);
+    silenceTimer = setTimeout(() => stopVoiceInput(), 5000);
+  }
+
   function stopVoiceInput() {
     isRecording = false;
+    clearTimeout(silenceTimer);
+    silenceTimer = null;
     const btn = document.getElementById('voiceBtn');
     if (btn) btn.classList.remove('recording');
     const status = document.getElementById('voiceStatus');
