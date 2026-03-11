@@ -155,11 +155,6 @@
     }
 
     .hi-info { flex: 1; min-width: 0; }
-    .hi-topic {
-      font-size: 13px;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-      color: var(--text);
-    }
     .hi-date {
       font-size: 11px;
       color: var(--text-muted);
@@ -586,7 +581,6 @@
       display: flex; align-items: flex-start; gap: 12px;
     }
     .modal-head-info { flex: 1; min-width: 0; }
-    .modal-topic { font-size: 15px; font-weight: 700; word-break: break-word; }
     .modal-meta { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
     .modal-phrases-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
     .modal-tag {
@@ -661,20 +655,10 @@
     <!-- 가변 영역: Step 1 + Step 2 -->
     <div class="center-main">
 
-      <!-- Step 1 -->
-      <div class="field-group">
-        <div class="field-label">
-          <span class="step-badge">1</span>
-          주제 / 메뉴 이름
-        </div>
-        <input type="text" id="topic"
-          placeholder="예: 로그인 페이지, 회원가입 API, 대시보드 차트..." />
-      </div>
-
-      <!-- Step 2: flex:1 로 남은 공간 채움 -->
+      <!-- Step 1: flex:1 로 남은 공간 채움 -->
       <div class="field-group body-group">
         <div class="field-label">
-          <span class="step-badge">2</span>
+          <span class="step-badge">1</span>
           요청 내용
         </div>
         <textarea id="body" class="body-input"
@@ -699,7 +683,7 @@
       <!-- Step 3 -->
       <div>
         <div class="footer-phrases-label" style="margin-bottom:8px;">
-          <span class="step-badge">3</span>
+          <span class="step-badge">2</span>
           자주 쓰는 멘트
           <span style="font-weight:400;color:var(--text-dim);font-size:11px;text-transform:none;letter-spacing:0;">선택 시 프롬프트에 포함</span>
         </div>
@@ -715,7 +699,7 @@
       </div>
 
       <!-- Generate -->
-      <button class="generate-btn" onclick="generatePrompt()">
+      <button class="generate-btn" id="generateBtn" onclick="generatePrompt()">
         ✦ 프롬프트 생성
       </button>
       <p class="shortcut-hint">⌘ + Enter</p>
@@ -752,8 +736,7 @@
   <div class="modal">
     <div class="modal-head">
       <div class="modal-head-info">
-        <div class="modal-topic" id="modalTopic"></div>
-        <div class="modal-meta" id="modalMeta"></div>
+<div class="modal-meta" id="modalMeta"></div>
         <div class="modal-phrases-row" id="modalPhrases"></div>
       </div>
       <button class="modal-close" onclick="closeModal()">×</button>
@@ -783,6 +766,17 @@
 <script>
   const KEY_PHRASES = 'promptman_phrases';
   const KEY_HISTORY = 'promptman_history';
+  const CLAUDE_MODEL   = 'claude-sonnet-4-6';
+  const KEY_API = 'promptman_api_key';
+
+  function getApiKey() {
+    let key = localStorage.getItem(KEY_API) || '';
+    if (!key) {
+      key = prompt('Claude API 키를 입력하세요.\n(한 번 저장하면 다시 묻지 않습니다)') || '';
+      if (key) localStorage.setItem(KEY_API, key.trim());
+    }
+    return key.trim();
+  }
 
   let phrases = [];
   let history = [];
@@ -927,52 +921,92 @@
   }
 
   // ── Generate ──────────────────────────────────────────────
-  function generatePrompt() {
-    let topic = document.getElementById('topic').value.trim();
+  async function generatePrompt() {
     const body  = document.getElementById('body').value.trim();
     const selectedPhrases = phrases.filter(p => p.selected).map(p => p.text);
 
-    if (!topic && !body) {
-      alert('주제 또는 요청 내용을 입력해주세요.');
+    if (!body) {
+      alert('요청 내용을 입력해주세요.');
       return;
     }
 
-    // 주제 미입력 시 '수정요청'으로 자동 처리
-    const autoFilled = !topic;
-    if (autoFilled) topic = '수정요청';
+    // 로딩 상태
+    const btn = document.getElementById('generateBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ 생성 중...';
 
-    let prompt = '';
-    if (topic) prompt += `# ${topic}\n\n`;
-    if (body)  prompt += `${body}\n`;
-    if (selectedPhrases.length > 0) {
-      prompt += `\n## 추가 요구사항\n`;
-      selectedPhrases.forEach(p => { prompt += `- ${p}\n`; });
-    }
-    prompt = prompt.trim();
-
-    // Show output
     const area = document.getElementById('outputArea');
     const empty = document.getElementById('outputEmpty');
-    area.value = prompt;
+    area.value = '';
     area.style.display = 'flex';
     empty.style.display = 'none';
-    document.getElementById('regenBtn').style.display = 'inline-flex';
-    document.getElementById('copyBtn').style.display = 'inline-flex';
+    document.getElementById('regenBtn').style.display = 'none';
+    document.getElementById('copyBtn').style.display = 'none';
 
-    // Save history
-    saveHistory({ topic, body, selectedPhrases, prompt });
+    // Claude API에 전달할 사용자 입력 조합
+    let userMessage = `요청 내용:\n${body}`;
+    if (selectedPhrases.length > 0) {
+      userMessage += `\n\n추가 요구사항:\n` + selectedPhrases.map(p => `- ${p}`).join('\n');
+    }
 
-    // Auto-copy
-    copyToClipboard(prompt, false);
+    try {
+      const apiKey = getApiKey();
+      if (!apiKey) { alert('API 키가 없어 생성을 취소했습니다.'); return; }
 
-    // Reset input fields (멘트 선택 상태는 유지)
-    document.getElementById('topic').value = '';
-    document.getElementById('body').value = '';
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: CLAUDE_MODEL,
+          max_tokens: 2048,
+          system: `당신은 AI 프롬프트 작성 전문가입니다.
+사용자가 제공한 주제·요청 내용·추가 요구사항을 바탕으로, AI 어시스턴트에게 전달할 명확하고 구조화된 프롬프트를 한국어로 작성하세요.
+
+규칙:
+- 마크다운 형식 사용 (# 주제로 시작, 필요 시 ## 섹션 추가)
+- 첫 줄은 반드시 "# {주제}" 형식
+- 요청 내용을 구체적이고 실행 가능하게 다듬되 의미 변경 금지
+- 추가 요구사항이 있으면 "## 추가 요구사항" 섹션으로 포함
+- 프롬프트 본문만 출력 (설명·인사 등 일절 금지)`,
+          messages: [{ role: 'user', content: userMessage }],
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      const prompt = data.content[0].text.trim();
+
+      area.value = prompt;
+      document.getElementById('regenBtn').style.display = 'inline-flex';
+      document.getElementById('copyBtn').style.display = 'inline-flex';
+
+      saveHistory({ body, selectedPhrases, prompt });
+      copyToClipboard(prompt, false);
+
+      document.getElementById('body').value = '';
+
+    } catch (e) {
+      alert('오류: ' + e.message);
+      area.style.display = 'none';
+      empty.style.display = 'flex';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '✦ 프롬프트 생성';
+    }
   }
 
   // ── History ───────────────────────────────────────────────
-  function saveHistory({ topic, body, selectedPhrases, prompt }) {
-    history.unshift({ id: Date.now().toString(), topic, body, selectedPhrases, prompt, createdAt: new Date().toISOString() });
+  function saveHistory({ body, selectedPhrases, prompt }) {
+    history.unshift({ id: Date.now().toString(), body, selectedPhrases, prompt, createdAt: new Date().toISOString() });
     if (history.length > 100) history = history.slice(0, 100);
     localStorage.setItem(KEY_HISTORY, JSON.stringify(history));
     renderHistory();
@@ -1025,7 +1059,7 @@
 
         const info = document.createElement('div');
         info.className = 'hi-info';
-        info.innerHTML = `<div class="hi-topic">${escHtml(entry.topic)}</div><div class="hi-date">${formatTime(entry.createdAt)}</div>`;
+        info.innerHTML = `<div class="hi-date">${formatTime(entry.createdAt)}</div>`;
 
         const del = document.createElement('button');
         del.className = 'hi-del';
@@ -1079,7 +1113,6 @@
 
   // ── Modal ─────────────────────────────────────────────────
   function openModal(entry) {
-    document.getElementById('modalTopic').textContent = entry.topic;
     document.getElementById('modalMeta').textContent = formatDate(entry.createdAt) + ' 생성';
     const pr = document.getElementById('modalPhrases');
     pr.innerHTML = '';
@@ -1173,15 +1206,9 @@
         }
       }
       if (finalTranscript) {
-        // "주제는/주제가/주제 ~" 패턴이면 주제 필드에 입력
-        const topicMatch = finalTranscript.match(/^주제(?:는|가|은|:)?\s*(.+)/);
-        if (topicMatch) {
-          document.getElementById('topic').value = topicMatch[1].trim();
-        } else {
-          const bodyEl = document.getElementById('body');
-          const cur = bodyEl.value;
-          bodyEl.value = cur + (cur && !cur.endsWith('\n') ? ' ' : '') + finalTranscript;
-        }
+        const bodyEl = document.getElementById('body');
+        const cur = bodyEl.value;
+        bodyEl.value = cur + (cur && !cur.endsWith('\n') ? ' ' : '') + finalTranscript;
       }
       document.getElementById('voiceStatus').textContent = interimTranscript || '듣는 중...';
       resetSilenceTimer();
@@ -1239,11 +1266,7 @@
   // isComposing: 한글 등 IME 조합 중에는 무시 (마지막 글자 잔류 버그 방지)
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') { closeModal(); confirmCancel(); }
-    if (e.target.id === 'topic' && e.key === 'Enter' && !e.isComposing) {
-      e.preventDefault();
-      document.getElementById('body').focus();
-    }
-    if (e.target.id === 'newPhrase' && e.key === 'Enter' && !e.isComposing) addPhrase();
+if (e.target.id === 'newPhrase' && e.key === 'Enter' && !e.isComposing) addPhrase();
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
       // setTimeout(0): IME 조합 완료(compositionend)를 먼저 처리한 뒤 실행
