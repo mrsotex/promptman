@@ -1001,7 +1001,7 @@
         body: JSON.stringify({
           model: getModel(),
           max_tokens: 1024,
-          system: `사용자의 요청을 AI에게 전달할 간결한 프롬프트로 다듬어라. 마크다운 사용, 군더더기 없이 핵심만. 추가 요구사항이 있으면 끝에 붙여라. 설명·인사 없이 프롬프트만 출력.`,
+          system: `사용자의 요청을 AI에게 전달할 간결한 프롬프트로 다듬어라. 첫 줄은 반드시 "# 주제요약" 형식으로 시작하고 2~5단어로 핵심을 요약하라. 마크다운 사용, 군더더기 없이 핵심만. 추가 요구사항이 있으면 끝에 붙여라. 설명·인사 없이 프롬프트만 출력.`,
           messages: [{ role: 'user', content: userMessage }],
         }),
       });
@@ -1266,7 +1266,7 @@
 
   function resetSilenceTimer() {
     clearTimeout(silenceTimer);
-    silenceTimer = setTimeout(() => stopVoiceInput(), 5000);
+    silenceTimer = setTimeout(() => stopVoiceInput(), 10000);
   }
 
   function stopVoiceInput() {
