@@ -737,7 +737,7 @@
       <button class="generate-btn" id="generateBtn" onclick="generatePrompt()">
         ✦ 프롬프트 생성
       </button>
-      <p class="shortcut-hint">⌘ + Enter</p>
+      <p class="shortcut-hint">⌘ 두 번</p>
 
     </div>
   </main>
@@ -1326,16 +1326,27 @@
     }
   });
 
+  // ── Cmd double-press → 프롬프트 생성 ──────────────────────
+  let lastCmdTime = 0;
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Meta' && !e.altKey && !e.ctrlKey && !e.shiftKey) {
+      const now = Date.now();
+      if (now - lastCmdTime < 400) {
+        e.preventDefault();
+        // setTimeout(0): IME 조합 완료(compositionend)를 먼저 처리한 뒤 실행
+        setTimeout(() => generatePrompt(), 0);
+        lastCmdTime = 0;
+      } else {
+        lastCmdTime = now;
+      }
+    }
+  });
+
   // ── Keyboard ──────────────────────────────────────────────
   // isComposing: 한글 등 IME 조합 중에는 무시 (마지막 글자 잔류 버그 방지)
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') { closeModal(); confirmCancel(); }
-if (e.target.id === 'newPhrase' && e.key === 'Enter' && !e.isComposing) addPhrase();
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      // setTimeout(0): IME 조합 완료(compositionend)를 먼저 처리한 뒤 실행
-      setTimeout(() => generatePrompt(), 0);
-    }
+    if (e.target.id === 'newPhrase' && e.key === 'Enter' && !e.isComposing) addPhrase();
   });
 
   init();
