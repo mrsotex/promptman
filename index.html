@@ -926,59 +926,6 @@
     confirmCallback = null;
   }
 
-  // ── Topic Auto-Summary ────────────────────────────────────
-  function summarizeTopic(body) {
-    if (!body || body.trim().length < 2) return '수정 요청 사항';
-
-    // 한국어 조사 제거
-    const particleRe = /(을|를|이|가|은|는|에서|으로|로|의|에|와|과|도|만|부터|까지|에게|한테|이나|나|랑|이랑|하고|이고|고|라고|이라고|으로부터|로부터)$/;
-
-    // 불용어: 조사·어미·지시어·일반 동사구 등
-    const stopWords = new Set([
-      '있는','하는','해서','하면','그리고','하지만','또한','따라서','그러나',
-      '위해','통해','경우','방법','내용','부분','같은','다른','새로운','기존',
-      '되는','되어','되면','하고','이렇게','그렇게','저렇게','어떤','어떻게',
-      '만들어줘','만들어','해줘','해주세요','작성해줘','작성해','구현해줘','구현해',
-      '추가해줘','추가해','수정해줘','수정해','변경해줘','변경해','삭제해줘','삭제해',
-      '싶어','싶다','싶은지','해야','해야하는','합니다','됩니다','있습니다','없습니다',
-      '입니다','부탁드립니다','주세요','이거','저거','그거','여기','저기','거기',
-      '이것','저것','그것','무엇을','무엇이','어디에','언제','왜','어느',
-      '이후','이전','현재','다음','이미','아직','계속','자동','수동',
-      '관련','기능','화면','페이지','데이터','정보','항목','목록','버튼',
-    ]);
-
-    const text = body.replace(/[^\w\s가-힣]/g, ' ').replace(/\s+/g, ' ').trim();
-    const tokens = text.split(' ')
-      .map(t => t.replace(particleRe, ''))
-      .filter(t => t.length >= 2 && !/^\d+$/.test(t));
-
-    // 빈도 계산
-    const freq = {};
-    tokens.forEach(t => {
-      const k = t.toLowerCase();
-      if (!stopWords.has(k) && !stopWords.has(t)) {
-        freq[k] = (freq[k] || 0) + 1;
-      }
-    });
-
-    const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]);
-    if (sorted.length === 0) return '수정 요청 사항';
-
-    const [[topWord, topCount], second] = [sorted[0], sorted[1]];
-
-    // 최다 단어가 2회 이상 → 집중된 주제
-    if (topCount >= 2) {
-      if (second && second[1] >= 2) return `${topWord} ${second[0]}`;
-      return topWord;
-    }
-
-    // 모두 1회지만 짧은 문장 → 첫 번째 키워드 반환
-    if (tokens.length <= 6) return topWord;
-
-    // 산발적
-    return '수정 요청 사항';
-  }
-
   // ── Generate ──────────────────────────────────────────────
   function generatePrompt() {
     let topic = document.getElementById('topic').value.trim();
@@ -990,9 +937,9 @@
       return;
     }
 
-    // 주제 미입력 시 요청 내용에서 자동 추출
+    // 주제 미입력 시 '수정요청'으로 자동 처리
     const autoFilled = !topic;
-    if (autoFilled) topic = summarizeTopic(body);
+    if (autoFilled) topic = '수정요청';
 
     let prompt = '';
     if (topic) prompt += `# ${topic}\n\n`;
@@ -1226,9 +1173,15 @@
         }
       }
       if (finalTranscript) {
-        const bodyEl = document.getElementById('body');
-        const cur = bodyEl.value;
-        bodyEl.value = cur + (cur && !cur.endsWith('\n') ? ' ' : '') + finalTranscript;
+        // "주제는/주제가/주제 ~" 패턴이면 주제 필드에 입력
+        const topicMatch = finalTranscript.match(/^주제(?:는|가|은|:)?\s*(.+)/);
+        if (topicMatch) {
+          document.getElementById('topic').value = topicMatch[1].trim();
+        } else {
+          const bodyEl = document.getElementById('body');
+          const cur = bodyEl.value;
+          bodyEl.value = cur + (cur && !cur.endsWith('\n') ? ' ' : '') + finalTranscript;
+        }
       }
       document.getElementById('voiceStatus').textContent = interimTranscript || '듣는 중...';
       resetSilenceTimer();
