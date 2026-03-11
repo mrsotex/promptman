@@ -155,6 +155,13 @@
     }
 
     .hi-info { flex: 1; min-width: 0; }
+    .hi-title {
+      font-size: 12px;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     .hi-date {
       font-size: 11px;
       color: var(--text-muted);
@@ -1081,7 +1088,8 @@
 
         const info = document.createElement('div');
         info.className = 'hi-info';
-        info.innerHTML = `<div class="hi-date">${formatTime(entry.createdAt)}</div>`;
+        const title = extractTitle(entry.prompt);
+        info.innerHTML = `<div class="hi-title">${escHtml(title)}</div><div class="hi-date">${formatTime(entry.createdAt)}</div>`;
 
         const del = document.createElement('button');
         del.className = 'hi-del';
@@ -1127,6 +1135,12 @@
     const d = new Date(iso);
     const pad = n => String(n).padStart(2,'0');
     return `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function extractTitle(prompt) {
+    if (!prompt) return '(제목 없음)';
+    const match = prompt.match(/^#\s+(.+)/m);
+    return match ? match[1].trim() : prompt.split('\n')[0].trim() || '(제목 없음)';
   }
 
   function escHtml(str) {
