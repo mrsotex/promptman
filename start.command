@@ -11,7 +11,7 @@ lsof -ti:$PORT | xargs kill -9 2>/dev/null
 
 # Python으로 로컬 서버 시작
 echo "PromptMan 서버 시작 중... (http://localhost:$PORT)"
-python3 server.py &
+python3 -m http.server $PORT &
 SERVER_PID=$!
 
 # 서버 준비될 때까지 잠깐 대기
