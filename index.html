@@ -1061,11 +1061,8 @@
     document.getElementById('regenBtn').style.display = 'none';
     document.getElementById('copyBtn').style.display = 'none';
 
-    // Claude API에 전달할 사용자 입력 조합
+    // Claude API에 전달할 사용자 입력 조합 (자주쓰는멘트는 API에 보내지 않고 결과에 직접 결합)
     let userMessage = `요청 내용:\n${body}`;
-    if (selectedPhrases.length > 0) {
-      userMessage += `\n\n추가 요구사항:\n` + selectedPhrases.map(p => `- ${p}`).join('\n');
-    }
 
     try {
       const apiKey = getApiKey();
@@ -1085,8 +1082,8 @@
           system: `사용자의 요청을 AI에게 전달할 간결한 프롬프트로 다듬어라.
 
 규칙:
-- 첫 줄은 반드시 "#실제내용" 형식으로 작성하라. # 바로 뒤에 공백 없이 2~5단어로 핵심을 요약하라. 예: #입고관리 거래처선택 팝업
-- 마크다운 사용, 군더더기 없이 핵심만. 추가 요구사항이 있으면 끝에 붙여라.
+- 첫 줄은 반드시 "# 실제내용" 형식으로 작성하라. # 뒤에 공백 한 칸을 넣고 2~5단어로 핵심을 요약하라. 예: # 입고관리 거래처선택 팝업
+- 마크다운 사용, 군더더기 없이 핵심만.
 - 설명·인사 없이 프롬프트만 출력.
 
 주의:
@@ -1103,7 +1100,12 @@
       }
 
       const data = await res.json();
-      const prompt = data.content[0].text.trim();
+      let prompt = data.content[0].text.trim();
+
+      // 선택된 자주쓰는멘트를 생성 결과 뒤에 결합
+      if (selectedPhrases.length > 0) {
+        prompt += '\n\n' + selectedPhrases.join('\n');
+      }
 
       area.value = prompt;
       document.getElementById('regenBtn').style.display = 'inline-flex';
