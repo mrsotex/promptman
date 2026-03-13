@@ -396,6 +396,22 @@
 
     /* Phrases */
     .phrases-wrap { display: flex; flex-direction: column; gap: 10px; }
+    .phrases-wrap.collapsed .phrases-list-full { display: none; }
+    .phrases-wrap.collapsed hr,
+    .phrases-wrap.collapsed .add-phrase-row { display: none; }
+    .phrases-list-collapsed { display: none; }
+    .phrases-wrap.collapsed .phrases-list-collapsed { display: flex; flex-wrap: wrap; gap: 7px; min-height: 20px; }
+
+    .phrases-toggle-btn {
+      margin-left: auto;
+      background: none; border: none;
+      font-size: 11px; color: var(--text-muted);
+      cursor: pointer; padding: 0;
+      display: flex; align-items: center; gap: 3px;
+      transition: color 0.12s;
+      text-transform: none; letter-spacing: 0; font-weight: 500;
+    }
+    .phrases-toggle-btn:hover { color: var(--text); }
 
     .phrases-list {
       display: flex;
@@ -752,9 +768,11 @@
           <span class="step-badge">2</span>
           자주 쓰는 멘트
           <span style="font-weight:400;color:var(--text-dim);font-size:11px;text-transform:none;letter-spacing:0;">선택 시 프롬프트에 포함</span>
+          <button class="phrases-toggle-btn" id="phrasesToggleBtn" onclick="togglePhrasesCollapsed()"></button>
         </div>
-        <div class="phrases-wrap">
-          <div class="phrases-list" id="phrasesList"></div>
+        <div class="phrases-wrap" id="phrasesWrap">
+          <div class="phrases-list-full" id="phrasesList"></div>
+          <div class="phrases-list-collapsed" id="phrasesListCollapsed"></div>
           <hr style="margin:10px 0;" />
           <div class="add-phrase-row">
             <input type="text" id="newPhrase"
@@ -847,6 +865,7 @@
   const KEY_MODEL    = 'promptman_model';
   const KEY_API      = 'promptman_api_key';
   const KEY_SIDEBAR  = 'promptman_sidebar';
+  const KEY_PHRASES_COLLAPSED = 'promptman_phrases_collapsed';
 
   function getModel() {
     return document.querySelector('input[name="model"]:checked')?.value || 'claude-sonnet-4-6';
@@ -879,6 +898,7 @@
   let isRecording = false;
   let silenceTimer = null;
   let sidebarVisible = true;
+  let phrasesCollapsed = false;
 
   // ── Sidebar Toggle ────────────────────────────────────────
   function toggleSidebar() {
@@ -896,12 +916,34 @@
     }
   }
 
+  // ── Phrases Collapse Toggle ────────────────────────────────
+  function togglePhrasesCollapsed() {
+    phrasesCollapsed = !phrasesCollapsed;
+    localStorage.setItem(KEY_PHRASES_COLLAPSED, phrasesCollapsed ? '1' : '0');
+    applyPhrasesCollapsedState();
+    renderPhrases();
+  }
+
+  function applyPhrasesCollapsedState() {
+    const wrap = document.getElementById('phrasesWrap');
+    const btn  = document.getElementById('phrasesToggleBtn');
+    if (phrasesCollapsed) {
+      wrap.classList.add('collapsed');
+      btn.textContent = '펼치기 ▼';
+    } else {
+      wrap.classList.remove('collapsed');
+      btn.textContent = '접기 ▲';
+    }
+  }
+
   // ── Init ──────────────────────────────────────────────────
   function init() {
     try { phrases = JSON.parse(localStorage.getItem(KEY_PHRASES) || '[]'); } catch(e) { phrases = []; }
     try { history = JSON.parse(localStorage.getItem(KEY_HISTORY) || '[]'); } catch(e) { history = []; }
     sidebarVisible = localStorage.getItem(KEY_SIDEBAR) !== '0';
+    phrasesCollapsed = localStorage.getItem(KEY_PHRASES_COLLAPSED) === '1';
     applySidebarState();
+    applyPhrasesCollapsedState();
     loadModel();
     document.querySelectorAll('input[name="model"]').forEach(r => {
       r.addEventListener('change', () => saveModel(r.value));
@@ -914,6 +956,24 @@
   function savePhrases() { localStorage.setItem(KEY_PHRASES, JSON.stringify(phrases)); }
 
   function renderPhrases() {
+    // collapsed 상태: 선택된 멘트만 별도 영역에 표시
+    const collapsedList = document.getElementById('phrasesListCollapsed');
+    collapsedList.innerHTML = '';
+    if (phrasesCollapsed) {
+      const selected = phrases.filter(p => p.selected);
+      if (selected.length === 0) {
+        collapsedList.innerHTML = '<span class="empty-hint">선택된 멘트 없음</span>';
+      } else {
+        selected.forEach(p => {
+          const chip = document.createElement('div');
+          chip.className = 'phrase-chip selected';
+          chip.textContent = p.text;
+          chip.onclick = () => { togglePhrase(p.id); };
+          collapsedList.appendChild(chip);
+        });
+      }
+    }
+
     const list = document.getElementById('phrasesList');
     list.innerHTML = '';
     if (phrases.length === 0) {
