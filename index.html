@@ -1164,7 +1164,7 @@
 
       // 선택된 자주쓰는멘트를 생성 결과 뒤에 결합
       if (selectedPhrases.length > 0) {
-        prompt += '\n\n' + selectedPhrases.join('\n');
+        prompt += '\n\n# 지침\n' + selectedPhrases.join('\n');
       }
 
       area.value = prompt;
