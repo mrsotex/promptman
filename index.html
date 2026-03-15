@@ -984,21 +984,53 @@
   let ttsRate = 1.0;
   let ttsPlaying = false;
   let ttsKoVoices = [];
+  let ttsFullText = '';
+  let ttsCharIndex = 0;
 
   function initTTS() {
     const load = () => { ttsKoVoices = speechSynthesis.getVoices().filter(v => v.lang.startsWith('ko')); };
     load();
     speechSynthesis.onvoiceschanged = load;
+    document.addEventListener('keydown', e => {
+      if (e.shiftKey && e.code === 'Space') {
+        if (document.getElementById('ttsControls').style.display !== 'none') {
+          e.preventDefault();
+          toggleTTS();
+        }
+      }
+    });
   }
 
-  function getKoreanVoice(gender) {
-    if (gender === 'male') {
-      return ttsKoVoices.find(v => /남성|male|woosik|junho|kyunho/i.test(v.name))
-          || ttsKoVoices[ttsKoVoices.length - 1]
+  function getKoreanVoice() {
+    // 남성: 이름에 남성/male 계열이 있는 목소리, 없으면 목록 마지막(보통 두 번째)
+    if (ttsVoiceGender === 'male') {
+      return ttsKoVoices.find(v => /남성|male|kyunho|woosik|junho/i.test(v.name))
+          || (ttsKoVoices.length > 1 ? ttsKoVoices[ttsKoVoices.length - 1] : null)
           || ttsKoVoices[0];
     }
     return ttsKoVoices.find(v => /여성|female|yuna|sora|지영|지수/i.test(v.name))
         || ttsKoVoices[0];
+  }
+
+  function startTTS(fromIndex) {
+    const text = ttsFullText.slice(fromIndex);
+    if (!text) return;
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = 'ko-KR';
+    utter.rate = ttsRate;
+    // 남성: pitch를 낮춰 확실히 구분 (전용 목소리 없는 환경 대비)
+    utter.pitch = ttsVoiceGender === 'male' ? 0.6 : 1.1;
+    const voice = getKoreanVoice();
+    if (voice) utter.voice = voice;
+    utter.onboundary = e => { ttsCharIndex = fromIndex + e.charIndex; };
+    utter.onend = utter.onerror = () => {
+      ttsPlaying = false;
+      ttsCharIndex = 0;
+      document.getElementById('ttsPlayBtn').textContent = '▶ 재생';
+    };
+    speechSynthesis.speak(utter);
+    ttsPlaying = true;
+    document.getElementById('ttsPlayBtn').textContent = '■ 정지';
   }
 
   function stopTTS() {
@@ -1012,25 +1044,20 @@
     if (ttsPlaying) { stopTTS(); return; }
     const text = document.getElementById('outputArea').value;
     if (!text) return;
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = 'ko-KR';
-    utter.rate = ttsRate;
-    const voice = getKoreanVoice(ttsVoiceGender);
-    if (voice) utter.voice = voice;
-    utter.onend = utter.onerror = () => {
-      ttsPlaying = false;
-      document.getElementById('ttsPlayBtn').textContent = '▶ 재생';
-    };
-    speechSynthesis.speak(utter);
-    ttsPlaying = true;
-    document.getElementById('ttsPlayBtn').textContent = '■ 정지';
+    ttsFullText = text;
+    ttsCharIndex = 0;
+    startTTS(0);
   }
 
   function setTTSVoice(gender) {
     ttsVoiceGender = gender;
     document.getElementById('ttsVoiceFemale').classList.toggle('active', gender === 'female');
     document.getElementById('ttsVoiceMale').classList.toggle('active', gender === 'male');
-    if (ttsPlaying) stopTTS();
+    if (ttsPlaying) {
+      speechSynthesis.cancel();
+      ttsPlaying = false;
+      startTTS(ttsCharIndex);
+    }
   }
 
   function setTTSRate(rate) {
@@ -1038,7 +1065,11 @@
     document.getElementById('ttsRate12').classList.toggle('active', rate === 1.0);
     document.getElementById('ttsRate15').classList.toggle('active', rate === 1.5);
     document.getElementById('ttsRate20').classList.toggle('active', rate === 2.0);
-    if (ttsPlaying) stopTTS();
+    if (ttsPlaying) {
+      speechSynthesis.cancel();
+      ttsPlaying = false;
+      startTTS(ttsCharIndex);
+    }
   }
 
   function renderPhrases() {
