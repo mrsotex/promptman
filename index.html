@@ -521,6 +521,19 @@
     .btn.secondary:hover { background: var(--border); color: var(--text); }
     .btn.sm { height: 30px; font-size: 12px; padding: 0 12px; }
 
+    .tts-controls { display: flex; align-items: center; gap: 6px; }
+    .tts-toggle-group { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+    .tts-opt {
+      background: none; border: none; border-right: 1px solid var(--border);
+      padding: 0 9px; height: 30px;
+      font-size: 11px; font-weight: 500; color: var(--text-muted);
+      cursor: pointer; transition: all 0.12s;
+    }
+    .tts-opt:last-child { border-right: none; }
+    .tts-opt.active { background: var(--accent-dim); color: var(--accent); }
+    .tts-opt:hover:not(.active) { background: var(--hover); color: var(--text); }
+    .tts-play-btn { min-width: 62px; }
+
     .model-select-row {
       display: flex;
       gap: 16px;
@@ -809,7 +822,18 @@
       <h2>생성된 프롬프트</h2>
       <div class="output-actions">
         <span class="copy-toast" id="copyToast">복사 완료!</span>
-        <button class="btn secondary sm" onclick="generatePrompt()" id="regenBtn" style="display:none;">↺ 재생성</button>
+        <div class="tts-controls" id="ttsControls" style="display:none;">
+          <button class="btn secondary sm tts-play-btn" id="ttsPlayBtn" onclick="toggleTTS()">▶ 재생</button>
+          <div class="tts-toggle-group">
+            <button class="tts-opt active" id="ttsVoiceFemale" onclick="setTTSVoice('female')">여성</button>
+            <button class="tts-opt" id="ttsVoiceMale" onclick="setTTSVoice('male')">남성</button>
+          </div>
+          <div class="tts-toggle-group">
+            <button class="tts-opt active" id="ttsRate12" onclick="setTTSRate(1.2)">1.2x</button>
+            <button class="tts-opt" id="ttsRate15" onclick="setTTSRate(1.5)">1.5x</button>
+            <button class="tts-opt" id="ttsRate20" onclick="setTTSRate(2.0)">2x</button>
+          </div>
+        </div>
         <button class="btn sm" onclick="copyOutput()" id="copyBtn" style="display:none;">📋 복사</button>
       </div>
     </div>
@@ -948,12 +972,75 @@
     document.querySelectorAll('input[name="model"]').forEach(r => {
       r.addEventListener('change', () => saveModel(r.value));
     });
+    initTTS();
     renderPhrases();
     renderHistory();
   }
 
   // ── Phrases ───────────────────────────────────────────────
   function savePhrases() { localStorage.setItem(KEY_PHRASES, JSON.stringify(phrases)); }
+
+  // ── TTS ──────────────────────────────────────────────
+  let ttsVoiceGender = 'female';
+  let ttsRate = 1.2;
+  let ttsPlaying = false;
+  let ttsKoVoices = [];
+
+  function initTTS() {
+    const load = () => { ttsKoVoices = speechSynthesis.getVoices().filter(v => v.lang.startsWith('ko')); };
+    load();
+    speechSynthesis.onvoiceschanged = load;
+  }
+
+  function getKoreanVoice(gender) {
+    if (gender === 'male') {
+      return ttsKoVoices.find(v => /남성|male|woosik|junho|kyunho/i.test(v.name))
+          || ttsKoVoices[ttsKoVoices.length - 1]
+          || ttsKoVoices[0];
+    }
+    return ttsKoVoices.find(v => /여성|female|yuna|sora|지영|지수/i.test(v.name))
+        || ttsKoVoices[0];
+  }
+
+  function stopTTS() {
+    speechSynthesis.cancel();
+    ttsPlaying = false;
+    const btn = document.getElementById('ttsPlayBtn');
+    if (btn) btn.textContent = '▶ 재생';
+  }
+
+  function toggleTTS() {
+    if (ttsPlaying) { stopTTS(); return; }
+    const text = document.getElementById('outputArea').value;
+    if (!text) return;
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = 'ko-KR';
+    utter.rate = ttsRate;
+    const voice = getKoreanVoice(ttsVoiceGender);
+    if (voice) utter.voice = voice;
+    utter.onend = utter.onerror = () => {
+      ttsPlaying = false;
+      document.getElementById('ttsPlayBtn').textContent = '▶ 재생';
+    };
+    speechSynthesis.speak(utter);
+    ttsPlaying = true;
+    document.getElementById('ttsPlayBtn').textContent = '■ 정지';
+  }
+
+  function setTTSVoice(gender) {
+    ttsVoiceGender = gender;
+    document.getElementById('ttsVoiceFemale').classList.toggle('active', gender === 'female');
+    document.getElementById('ttsVoiceMale').classList.toggle('active', gender === 'male');
+    if (ttsPlaying) stopTTS();
+  }
+
+  function setTTSRate(rate) {
+    ttsRate = rate;
+    document.getElementById('ttsRate12').classList.toggle('active', rate === 1.2);
+    document.getElementById('ttsRate15').classList.toggle('active', rate === 1.5);
+    document.getElementById('ttsRate20').classList.toggle('active', rate === 2.0);
+    if (ttsPlaying) stopTTS();
+  }
 
   function renderPhrases() {
     // collapsed 상태: 선택된 멘트만 별도 영역에 표시
@@ -1118,8 +1205,9 @@
     area.value = '';
     area.style.display = 'flex';
     empty.style.display = 'none';
-    document.getElementById('regenBtn').style.display = 'none';
+    document.getElementById('ttsControls').style.display = 'none';
     document.getElementById('copyBtn').style.display = 'none';
+    stopTTS();
 
     // Claude API에 전달할 사용자 입력 조합 (자주쓰는멘트는 API에 보내지 않고 결과에 직접 결합)
     let userMessage = `요청 내용:\n${body}`;
@@ -1168,7 +1256,7 @@
       }
 
       area.value = prompt;
-      document.getElementById('regenBtn').style.display = 'inline-flex';
+      document.getElementById('ttsControls').style.display = 'flex';
       document.getElementById('copyBtn').style.display = 'inline-flex';
 
       saveHistory({ body, selectedPhrases, prompt });
