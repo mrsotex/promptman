@@ -889,6 +889,16 @@
   const KEY_API      = 'promptman_api_key';
   const KEY_SIDEBAR  = 'promptman_sidebar';
   const KEY_PHRASES_COLLAPSED = 'promptman_phrases_collapsed';
+  const KEY_GOOGLE_TTS = 'promptman_google_tts_key';
+
+  function getGoogleTTSKey() {
+    let key = localStorage.getItem(KEY_GOOGLE_TTS) || '';
+    if (!key) {
+      key = prompt('Google Cloud TTS API 키를 입력하세요.\n(한 번 저장하면 다시 묻지 않습니다)') || '';
+      if (key) localStorage.setItem(KEY_GOOGLE_TTS, key.trim());
+    }
+    return key.trim();
+  }
 
   function getModel() {
     return document.querySelector('input[name="model"]:checked')?.value || 'claude-sonnet-4-6';
@@ -979,19 +989,16 @@
   // ── Phrases ───────────────────────────────────────────────
   function savePhrases() { localStorage.setItem(KEY_PHRASES, JSON.stringify(phrases)); }
 
-  // ── TTS ──────────────────────────────────────────────
+  // ── TTS (Google Cloud Text-to-Speech) ────────────────
   let ttsVoiceGender = 'female';
   let ttsRate = 1.0;
   let ttsPlaying = false;
-  let ttsKoVoices = [];
   let ttsFullText = '';
-  let ttsCharIndex = 0;
-  let ttsIgnoreEnd = false; // cancel()이 onerror를 발생시킬 때 상태 리셋 방지
+  let ttsFromIndex = 0;   // 현재 재생 세그먼트 시작 위치
+  let ttsAudio = null;    // 현재 Audio 객체
+  let ttsIgnoreEnd = false;
 
   function initTTS() {
-    const load = () => { ttsKoVoices = speechSynthesis.getVoices().filter(v => v.lang.startsWith('ko')); };
-    load();
-    speechSynthesis.onvoiceschanged = load;
     document.addEventListener('keydown', e => {
       if (e.shiftKey && e.code === 'Space') {
         if (document.getElementById('ttsControls').style.display !== 'none') {
@@ -1002,54 +1009,83 @@
     });
   }
 
-  function getKoreanVoice() {
-    // 남성: 이름에 남성/male 계열이 있는 목소리, 없으면 목록 마지막(보통 두 번째)
-    if (ttsVoiceGender === 'male') {
-      return ttsKoVoices.find(v => /남성|male|kyunho|woosik|junho/i.test(v.name))
-          || (ttsKoVoices.length > 1 ? ttsKoVoices[ttsKoVoices.length - 1] : null)
-          || ttsKoVoices[0];
-    }
-    return ttsKoVoices.find(v => /여성|female|yuna|sora|지영|지수/i.test(v.name))
-        || ttsKoVoices[0];
-  }
-
-  function startTTS(fromIndex) {
+  async function startTTS(fromIndex) {
     const text = ttsFullText.slice(fromIndex);
-    if (!text) return;
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = 'ko-KR';
-    utter.rate = ttsRate;
-    // 남성: pitch를 낮춰 확실히 구분 (전용 목소리 없는 환경 대비)
-    utter.pitch = ttsVoiceGender === 'male' ? 0.6 : 1.1;
-    const voice = getKoreanVoice();
-    if (voice) utter.voice = voice;
-    utter.onboundary = e => { ttsCharIndex = fromIndex + e.charIndex; };
-    utter.onend = utter.onerror = () => {
-      if (ttsIgnoreEnd) { ttsIgnoreEnd = false; return; }
+    if (!text.trim()) return;
+
+    const apiKey = getGoogleTTSKey();
+    if (!apiKey) return;
+
+    const btn = document.getElementById('ttsPlayBtn');
+    btn.textContent = '로딩중...';
+    btn.disabled = true;
+
+    try {
+      const voiceName = ttsVoiceGender === 'male' ? 'ko-KR-Neural2-B' : 'ko-KR-Neural2-A';
+      const res = await fetch(
+        `https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            input: { text },
+            voice: { languageCode: 'ko-KR', name: voiceName },
+            audioConfig: { audioEncoding: 'MP3', speakingRate: ttsRate },
+          }),
+        }
+      );
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      const audioSrc = 'data:audio/mp3;base64,' + data.audioContent;
+
+      if (ttsAudio) { ttsAudio.pause(); ttsAudio.src = ''; }
+      ttsAudio = new Audio(audioSrc);
+      ttsFromIndex = fromIndex;
+
+      ttsAudio.onended = () => {
+        if (ttsIgnoreEnd) { ttsIgnoreEnd = false; return; }
+        ttsPlaying = false;
+        ttsFromIndex = 0;
+        btn.textContent = '▶ 재생';
+      };
+
+      ttsAudio.play();
+      ttsPlaying = true;
+      btn.disabled = false;
+      btn.textContent = '■ 정지';
+
+    } catch (e) {
+      alert('TTS 오류: ' + e.message);
       ttsPlaying = false;
-      ttsCharIndex = 0;
-      document.getElementById('ttsPlayBtn').textContent = '▶ 재생';
-    };
-    speechSynthesis.speak(utter);
-    ttsPlaying = true;
-    document.getElementById('ttsPlayBtn').textContent = '■ 정지';
+      btn.disabled = false;
+      btn.textContent = '▶ 재생';
+    }
   }
 
   function stopTTS() {
     ttsIgnoreEnd = false;
-    speechSynthesis.cancel();
+    if (ttsAudio) { ttsAudio.pause(); ttsAudio.src = ''; ttsAudio = null; }
     ttsPlaying = false;
+    ttsFromIndex = 0;
     const btn = document.getElementById('ttsPlayBtn');
-    if (btn) btn.textContent = '▶ 재생';
+    if (btn) { btn.textContent = '▶ 재생'; btn.disabled = false; }
   }
 
-  // 옵션 변경 시 현재 위치부터 이어서 재생
+  // 재생 중 옵션 변경 시 현재 위치부터 이어서 재생
   function resumeTTS() {
-    const resumeFrom = ttsCharIndex;
-    ttsIgnoreEnd = true;          // cancel()이 발생시키는 onerror 무시
-    speechSynthesis.cancel();
+    if (!ttsAudio) return;
+    const ratio = ttsAudio.currentTime / (ttsAudio.duration || 1);
+    const segLen = ttsFullText.length - ttsFromIndex;
+    const resumeFrom = ttsFromIndex + Math.floor(ratio * segLen);
+    ttsIgnoreEnd = true;
+    ttsAudio.pause();
     ttsPlaying = false;
-    setTimeout(() => startTTS(resumeFrom), 50); // cancel 정착 후 재시작
+    startTTS(resumeFrom);
   }
 
   function toggleTTS() {
@@ -1057,7 +1093,7 @@
     const text = document.getElementById('outputArea').value;
     if (!text) return;
     ttsFullText = text;
-    ttsCharIndex = 0;
+    ttsFromIndex = 0;
     startTTS(0);
   }
 
