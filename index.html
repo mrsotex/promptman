@@ -828,7 +828,7 @@
             <button class="tts-opt" id="ttsVoiceMale" onclick="setTTSVoice('male')">남성</button>
           </div>
           <div class="tts-toggle-group">
-            <button class="tts-opt active" id="ttsRate12" onclick="setTTSRate(1.2)">1.2x</button>
+            <button class="tts-opt active" id="ttsRate12" onclick="setTTSRate(1.0)">1x</button>
             <button class="tts-opt" id="ttsRate15" onclick="setTTSRate(1.5)">1.5x</button>
             <button class="tts-opt" id="ttsRate20" onclick="setTTSRate(2.0)">2x</button>
           </div>
@@ -981,7 +981,7 @@
 
   // ── TTS ──────────────────────────────────────────────
   let ttsVoiceGender = 'female';
-  let ttsRate = 1.2;
+  let ttsRate = 1.0;
   let ttsPlaying = false;
   let ttsKoVoices = [];
 
@@ -1035,7 +1035,7 @@
 
   function setTTSRate(rate) {
     ttsRate = rate;
-    document.getElementById('ttsRate12').classList.toggle('active', rate === 1.2);
+    document.getElementById('ttsRate12').classList.toggle('active', rate === 1.0);
     document.getElementById('ttsRate15').classList.toggle('active', rate === 1.5);
     document.getElementById('ttsRate20').classList.toggle('active', rate === 2.0);
     if (ttsPlaying) stopTTS();
