@@ -986,6 +986,7 @@
   let ttsKoVoices = [];
   let ttsFullText = '';
   let ttsCharIndex = 0;
+  let ttsIgnoreEnd = false; // cancel()이 onerror를 발생시킬 때 상태 리셋 방지
 
   function initTTS() {
     const load = () => { ttsKoVoices = speechSynthesis.getVoices().filter(v => v.lang.startsWith('ko')); };
@@ -1024,6 +1025,7 @@
     if (voice) utter.voice = voice;
     utter.onboundary = e => { ttsCharIndex = fromIndex + e.charIndex; };
     utter.onend = utter.onerror = () => {
+      if (ttsIgnoreEnd) { ttsIgnoreEnd = false; return; }
       ttsPlaying = false;
       ttsCharIndex = 0;
       document.getElementById('ttsPlayBtn').textContent = '▶ 재생';
@@ -1034,10 +1036,20 @@
   }
 
   function stopTTS() {
+    ttsIgnoreEnd = false;
     speechSynthesis.cancel();
     ttsPlaying = false;
     const btn = document.getElementById('ttsPlayBtn');
     if (btn) btn.textContent = '▶ 재생';
+  }
+
+  // 옵션 변경 시 현재 위치부터 이어서 재생
+  function resumeTTS() {
+    const resumeFrom = ttsCharIndex;
+    ttsIgnoreEnd = true;          // cancel()이 발생시키는 onerror 무시
+    speechSynthesis.cancel();
+    ttsPlaying = false;
+    setTimeout(() => startTTS(resumeFrom), 50); // cancel 정착 후 재시작
   }
 
   function toggleTTS() {
@@ -1053,11 +1065,7 @@
     ttsVoiceGender = gender;
     document.getElementById('ttsVoiceFemale').classList.toggle('active', gender === 'female');
     document.getElementById('ttsVoiceMale').classList.toggle('active', gender === 'male');
-    if (ttsPlaying) {
-      speechSynthesis.cancel();
-      ttsPlaying = false;
-      startTTS(ttsCharIndex);
-    }
+    if (ttsPlaying) resumeTTS();
   }
 
   function setTTSRate(rate) {
@@ -1065,11 +1073,7 @@
     document.getElementById('ttsRate12').classList.toggle('active', rate === 1.0);
     document.getElementById('ttsRate15').classList.toggle('active', rate === 1.5);
     document.getElementById('ttsRate20').classList.toggle('active', rate === 2.0);
-    if (ttsPlaying) {
-      speechSynthesis.cancel();
-      ttsPlaying = false;
-      startTTS(ttsCharIndex);
-    }
+    if (ttsPlaying) resumeTTS();
   }
 
   function renderPhrases() {
