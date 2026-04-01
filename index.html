@@ -322,6 +322,90 @@
       line-height: 1.6;
     }
 
+    /* ── Image Paste Area ── */
+    .image-paste-area {
+      flex-shrink: 0;
+      display: none;
+    }
+    .image-paste-area.has-image {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .image-thumb-wrap {
+      position: relative;
+      flex-shrink: 0;
+      cursor: pointer;
+      outline: none;
+    }
+    .image-thumb-wrap:focus .image-thumb,
+    .image-thumb-wrap.focused .image-thumb {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-dim2);
+    }
+    .image-thumb {
+      width: 64px;
+      height: 48px;
+      object-fit: cover;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      display: block;
+      transition: border-color 0.12s;
+    }
+    .image-thumb-del {
+      position: absolute;
+      top: -5px; right: -5px;
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: var(--surface3);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 11px; line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .image-thumb-del:hover { background: var(--red); color: #fff; border-color: var(--red); }
+    .image-paste-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .image-paste-name {
+      font-size: 11px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .image-paste-hint {
+      font-size: 10px;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+    .image-copy-btn {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .image-copy-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+    .image-copy-btn.copied { border-color: var(--green); color: var(--green); background: rgba(74,222,128,0.08); }
+
     .voice-input-row {
       display: flex;
       align-items: center;
@@ -787,6 +871,20 @@
         </div>
         <textarea id="body" class="body-input"
           placeholder="어떤 기능을 만들고 싶은지, 어떻게 동작해야 하는지 작성하세요.&#10;예: 이메일과 비밀번호로 로그인하고 JWT 토큰을 반환하는 API를 만들어줘."></textarea>
+        <!-- 이미지 붙여넣기 미리보기 -->
+        <div class="image-paste-area" id="imagePasteArea">
+          <div class="image-thumb-wrap" id="imageThumbWrap" tabindex="0" title="클릭하거나 Cmd+C로 이미지 복사">
+            <img class="image-thumb" id="imageThumb" src="" alt="첨부 이미지" />
+            <button class="image-thumb-del" id="imageDelBtn" title="이미지 제거">×</button>
+          </div>
+          <div class="image-paste-info">
+            <div class="image-paste-name" id="imagePasteName">스크린샷</div>
+            <div class="image-paste-hint">API 전달에 포함됨 · Cmd+C로 복사</div>
+          </div>
+          <button class="image-copy-btn" id="imageCopyBtn" title="이미지를 클립보드에 복사">
+            📋 이미지 복사
+          </button>
+        </div>
         <div class="voice-input-row">
           <button id="voiceBtn" class="voice-btn" onclick="toggleVoiceInput()" title="음성 입력">
             <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
@@ -960,6 +1058,10 @@ function getModel() {
   let phrasesCollapsed = false;
   let currentMode = 'improve'; // 'improve' | 'polish'
 
+  // ── 첨부 이미지 상태 ──────────────────────────────────────
+  let attachedImage = null; // { dataUrl, blob, mediaType, name }
+  let imageThumbFocused = false;
+
   const PLACEHOLDERS = {
     improve: '어떤 기능을 만들고 싶은지, 어떻게 동작해야 하는지 작성하세요.\n예: 이메일과 비밀번호로 로그인하고 JWT 토큰을 반환하는 API를 만들어줘.',
     polish: '주절주절 말하듯 작성하세요. 클로드가 의도를 파악해 깔끔하게 정리해드립니다.\n예: 음 그러니까 저번에 만든 그 목록 화면에서 항목 클릭하면 상세가 나와야 하는데 지금은 아무것도 안 되거든요 그걸 좀 고쳐줬으면...',
@@ -1014,6 +1116,91 @@ function getModel() {
     }
   }
 
+  // ── Image Attach ──────────────────────────────────────────
+  function initImagePaste() {
+    const bodyEl = document.getElementById('body');
+
+    // textarea 붙여넣기 감지
+    bodyEl.addEventListener('paste', e => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          const blob = item.getAsFile();
+          setAttachedImage(blob, item.type);
+          return;
+        }
+      }
+      // 이미지 아닌 경우 → 기본 동작(텍스트 붙여넣기) 허용
+    });
+
+    // 썸네일 포커스/클릭 → Cmd+C 로 복사 준비
+    const thumbWrap = document.getElementById('imageThumbWrap');
+    thumbWrap.addEventListener('focus', () => { imageThumbFocused = true; thumbWrap.classList.add('focused'); });
+    thumbWrap.addEventListener('blur',  () => { imageThumbFocused = false; thumbWrap.classList.remove('focused'); });
+    thumbWrap.addEventListener('click', () => { thumbWrap.focus(); });
+
+    // 제거 버튼
+    document.getElementById('imageDelBtn').addEventListener('click', e => {
+      e.stopPropagation();
+      clearAttachedImage();
+    });
+
+    // 이미지 복사 버튼
+    document.getElementById('imageCopyBtn').addEventListener('click', () => {
+      copyAttachedImage();
+    });
+  }
+
+  function setAttachedImage(blob, mediaType) {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      attachedImage = {
+        dataUrl: ev.target.result,
+        blob,
+        mediaType: mediaType || 'image/png',
+        name: '스크린샷',
+      };
+      renderImagePreview();
+    };
+    reader.readAsDataURL(blob);
+  }
+
+  function clearAttachedImage() {
+    attachedImage = null;
+    renderImagePreview();
+  }
+
+  function renderImagePreview() {
+    const area = document.getElementById('imagePasteArea');
+    if (!attachedImage) {
+      area.classList.remove('has-image');
+      document.getElementById('imageThumb').src = '';
+      return;
+    }
+    document.getElementById('imageThumb').src = attachedImage.dataUrl;
+    document.getElementById('imagePasteName').textContent = attachedImage.name;
+    area.classList.add('has-image');
+  }
+
+  function copyAttachedImage() {
+    if (!attachedImage) return;
+    const btn = document.getElementById('imageCopyBtn');
+    navigator.clipboard.write([
+      new ClipboardItem({ [attachedImage.mediaType]: attachedImage.blob })
+    ]).then(() => {
+      btn.textContent = '✓ 복사됨';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = '📋 이미지 복사';
+        btn.classList.remove('copied');
+      }, 2000);
+    }).catch(() => {
+      alert('이미지 복사에 실패했습니다. 브라우저 권한을 확인해주세요.');
+    });
+  }
+
   // ── Init ──────────────────────────────────────────────────
   function init() {
     try { phrases = JSON.parse(localStorage.getItem(KEY_PHRASES) || '[]'); } catch(e) { phrases = []; }
@@ -1028,6 +1215,7 @@ function getModel() {
     });
     loadMode();
     initTTS();
+    initImagePaste();
     renderPhrases();
     renderHistory();
   }
@@ -1298,7 +1486,20 @@ function getModel() {
     stopTTS();
 
     // Claude API에 전달할 사용자 입력 조합 (자주쓰는멘트는 API에 보내지 않고 결과에 직접 결합)
-    let userMessage = `요청 내용:\n${body}`;
+    // 이미지가 첨부된 경우 멀티모달 content 배열로 구성
+    let userMessage;
+    if (attachedImage) {
+      const base64 = attachedImage.dataUrl.split(',')[1];
+      userMessage = [
+        {
+          type: 'image',
+          source: { type: 'base64', media_type: attachedImage.mediaType, data: base64 },
+        },
+        { type: 'text', text: `요청 내용:\n${body}` },
+      ];
+    } else {
+      userMessage = `요청 내용:\n${body}`;
+    }
 
     const SYSTEM_PROMPTS = {
       improve: `사용자의 요청을 AI에게 전달할 간결한 프롬프트로 다듬어라.
@@ -1343,7 +1544,7 @@ function getModel() {
           model: getModel(),
           max_tokens: 1024,
           system: SYSTEM_PROMPTS[currentMode],
-          messages: [{ role: 'user', content: userMessage }],
+          messages: [{ role: 'user', content: userMessage }], // 문자열 or 배열 모두 content에 유효
         }),
       });
 
@@ -1665,6 +1866,12 @@ function getModel() {
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') { closeModal(); confirmCancel(); }
     if (e.target.id === 'newPhrase' && e.key === 'Enter' && !e.isComposing) addPhrase();
+
+    // 이미지 썸네일 포커스 상태에서 Cmd+C → 이미지 복사
+    if (e.key === 'c' && e.metaKey && !e.shiftKey && !e.altKey && imageThumbFocused && attachedImage) {
+      e.preventDefault();
+      copyAttachedImage();
+    }
   });
 
   init();
